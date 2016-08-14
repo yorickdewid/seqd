@@ -7,9 +7,9 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-#define BUFLEN 512 // max length of buffer
+#define BUFLEN 512
 #define PROGNAME "seqd"
-#define DEF_PORT 53 // the port on which to listen for incoming data
+#define DEF_PORT 53
 
 const char command_add[] = "echo \"pass in on vtnet0 proto tcp from any to any port 8080 keep state\" | pfctl -a temp -f -";
 const char command_del[] = "pfctl -a temp -F rules";
@@ -28,18 +28,6 @@ struct tagopt {
     char *command_down;
 };
 
-void release() {
-    int i;
-
-    for (i=timeout; i>0; --i) {
-        sleep(1);
-        if (i%10==0)
-            printf("Down in %d\n", i);
-    }
-
-    system(command_del);
-}
-
 void usage() {
     puts(
         "usage: " PROGNAME " [-46q] [-p port] [-s seq]\n"
@@ -49,33 +37,54 @@ void usage() {
 
 int plisten(struct tagopt *options) {
     struct sockaddr_in si_me, si_other;
+    struct sockaddr_in6 si6_me, si6_other;
 
-    int s, i, recv_len, matchpos = 0;
+    int s, i, recv_len, matchpos = 0, _y = 1, _n = 0;
     unsigned int slen = sizeof(si_other);
+    unsigned int slen6 = sizeof(si6_other);
     char buf[BUFLEN];
 
     // create a UDP socket
-    if ((s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
+    if ((s = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
         perror("socket()");
+        return 1;
+    }
+
+    // reuse socket
+    if (setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &_y, sizeof(_y)) < 0) {
+        perror("setsockopt()");
+        return 1;
+    }
+
+    if (options->v6_only)
+        _n = 1;
+
+    // dual stack (or not)
+    if (setsockopt(s, IPPROTO_IPV6, IPV6_V6ONLY, &_n, sizeof(_n)) < 0) {
+        perror("setsockopt()");
         return 1;
     }
 
     if (options->v4_only)
         printf("binding ipv4\n");
     else if (options->v6_only)
-        printf("binding ipv4\n");
+        printf("binding ipv6\n");
     else
         printf("binding dual stack\n");
-    printf("port %d\n", options->port);
 
     // zero out the structure
-    memset((char *)&si_me, 0, sizeof(si_me));
-    si_me.sin_family = AF_INET;
-    si_me.sin_port = htons(options->port);
-    si_me.sin_addr.s_addr = htonl(INADDR_ANY);
+    //memset((char *)&si_me, 0, sizeof(si_me));
+    //si_me.sin_family = AF_INET;
+    //si_me.sin_port = htons(options->port);
+    //si_me.sin_addr.s_addr = htonl(INADDR_ANY);
+
+    memset((char *)&si6_me, 0, sizeof(si6_me));
+    si6_me.sin6_family = AF_INET6;
+    si6_me.sin6_port = htons(options->port);
+    si6_me.sin6_addr = in6addr_any;
 
     // bind socket to port
-    if (bind(s, (struct sockaddr*)&si_me, sizeof(si_me)) < 0) {
+    if (bind(s, (struct sockaddr*)&si6_me, sizeof(si6_me)) < 0) {
         perror("bind()");
         return 1;
     }
@@ -83,7 +92,7 @@ int plisten(struct tagopt *options) {
     // keep listening for data
     while (1) {
         // try to receive some data, this is a blocking call
-        if ((recv_len = recvfrom(s, buf, BUFLEN, 0, (struct sockaddr *)&si_other, &slen)) < 0) {
+        if ((recv_len = recvfrom(s, buf, BUFLEN, 0, (struct sockaddr *)&si6_other, &slen6)) < 0) {
             perror("recvfrom()");
             return 1;
         }
@@ -129,7 +138,8 @@ int main(int argc, char *argv[]) {
                 usage();
                 return 1;
             }
-            memcpy(options.seq, argv[++i], 4);
+            const char *seq = argv[++i];
+            memcpy(options.seq, seq, 4);
         } else if (!strcmp(argv[i], "-u")) {
             if (i+1>argc-1) {
                 usage();
@@ -151,21 +161,18 @@ int main(int argc, char *argv[]) {
                 }
             }
         } else if (!strcmp(argv[i], "-4")) {
-            puts("v4 only");
             if (options.v6_only) {
                 usage();
                 return 1;
             }
             options.v4_only = 1;
         } else if (!strcmp(argv[i], "-6")) {
-            puts("v6 only");
             if (options.v4_only) {
                 usage();
                 return 1;
             }
             options.v6_only = 1;
         } else if (!strcmp(argv[i], "-q")) {
-            puts("quiet");
             options.silent = 1;
         } else {
             usage();
