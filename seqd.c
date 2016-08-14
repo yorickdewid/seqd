@@ -10,10 +10,10 @@
 #define BUFLEN 512
 #define PROGNAME "seqd"
 #define DEF_PORT 53
+#define DEF_TIMEOUT 60
 
 const char command_add[] = "echo \"pass in on vtnet0 proto tcp from any to any port 8080 keep state\" | pfctl -a temp -f -";
 const char command_del[] = "pfctl -a temp -F rules";
-int timeout = 60;
 
 #define nsz(a) (sizeof(a)/sizeof(a[0]))
 
@@ -23,6 +23,7 @@ struct tagopt {
     char v6_only;
     char silent;
     short port;
+    short timeout;
     unsigned char seq[4];
     char *command_up;
     char *command_down;
@@ -31,7 +32,7 @@ struct tagopt {
 void usage() {
     puts(
         "usage: " PROGNAME " [-46q] [-p port] [-s seq]\n"
-        "        [-u command] [-d command]"
+        "        [-u command] [-d command] [-t sec]"
     );
 }
 
@@ -107,7 +108,7 @@ int plisten(struct tagopt *options) {
         if (!options->command_down)
             continue;
 
-        for (i=timeout; i>0; --i) {
+        for (i=options->timeout; i>0; --i) {
             sleep(1);
             printf("\rDown in %02d", i);
             fflush(stdout);
@@ -125,6 +126,7 @@ int main(int argc, char *argv[]) {
 
     struct tagopt options;
     options.port = DEF_PORT;
+    options.timeout = DEF_TIMEOUT;
     options.v4_only = 0;
     options.v6_only = 0;
     options.silent = 0;
@@ -156,6 +158,14 @@ int main(int argc, char *argv[]) {
             if (i + 1 <= argc - 1) {
                 options.port = atoi(argv[++i]);
                 if (!options.port) {
+                    usage();
+                    return 1;
+                }
+            }
+        } else if (!strcmp(argv[i], "-t")) {
+            if (i + 1 <= argc - 1) {
+                options.timeout = atoi(argv[++i]);
+                if (!options.timeout) {
                     usage();
                     return 1;
                 }
