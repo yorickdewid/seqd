@@ -1,5 +1,5 @@
 all:
-    $(CC) seqd.c -o seqd
+	$(CC) seqd.c -o seqd
 
 clean:
-    $(RM) seqd
+	$(RM) seqd
