@@ -27,6 +27,10 @@ seqd [-46q] [-p port] [-s seq] [-u command] [-d command] [-t sec]
 
 To build `seqd` just run `make` in the repository.
 
+Compatible with:
+ * FreeBSD
+ * OpenBSD
+
 License
 ----
 
